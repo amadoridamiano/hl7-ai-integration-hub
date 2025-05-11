@@ -27,17 +27,18 @@ The main configuration is located in `HL7MockGenerator/appsettings.json`. Exampl
 ```json
 {
   "OpenAI": {
-    "Model": "gpt-4o-mini"
-  },
+    "Model": "gpt-4.1-nano"
+  },  
   "Connection": {
-    "Ip": "127.0.0.1",
-    "Port": "2575"
+    "Ip": "192.168.1.60",
+    "Port": "55656"
   },
   "Message": {
     "Version": "2.5",
     "Type": "ADT^A31"
   },
-  "Mode": "1"
+  "Mode": "2",
+  "SpecsPath": "C:\\Lab\\Specs"
 }
 ```
 

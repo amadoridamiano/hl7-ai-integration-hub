@@ -36,3 +36,5 @@ TestResults/
 *.bak
 *.cache
 *.pdb
+
+appsettings.Development.json
