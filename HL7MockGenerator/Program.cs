@@ -34,13 +34,14 @@ internal static class Program
         var genMode = _configuration["Mode"] ?? Prompt("Mode: [1] Single send, [2] Continuous: ");
         
         var specsPath = _configuration["SpecsPath"] ?? Prompt("Enter the path to the specifications folder: ");
+        var reloadSpecs = Prompt("Reload specifications? [y/n]: ");
 
         var hl7MessageType = _configuration["Message:Type"] ?? Prompt("Message type (e.g., ADT^A31): ");
         var hl7Version = _configuration["Message:Version"] ?? Prompt("HL7 version (e.g., 2.5): ");
 
         var openaiKey = Environment.GetEnvironmentVariable("OPENAI_API_KEY") ?? Prompt("Enter OpenAI API Key: ");
         var openaiModel = _configuration["OpenAI:Model"] ?? Prompt("Model (e.g., gpt-3.5-turbo): ");
-
+        
         // Check if the OpenAI API key is valid
         var apiCaller = new OpenAiUtilities(openaiKey, openaiModel);
         var checkApiKey = await apiCaller.CheckApiKeyAsync();
@@ -52,7 +53,7 @@ internal static class Program
 
         // Create AI assistant
         var aiHelper = new OpenAiAssistantHelper(openaiKey, openaiModel);
-        await aiHelper.UploadFilesToVectorStoreAsync(specsPath);
+        await aiHelper.UploadFilesToVectorStoreAsync(specsPath, reloadSpecs.Equals("y", StringComparison.OrdinalIgnoreCase));
         await aiHelper.CreateAssistantAsync();
         
         do
@@ -61,6 +62,10 @@ internal static class Program
                 $"Generate an HL7 v{hl7Version} message of type {hl7MessageType} in pipe-delimited format. Invent real data.";
             
             var hl7Message = await aiHelper.AskAsync(prompt);
+            hl7Message = hl7Message.Replace("\r\n", "\n")   // normalizes CRLF to LF (if it is already there)
+                .Replace("\r", "\n")   // normalizes CR (when used alone)
+                .Replace("\n", "\r\n") // forces each row to have CRLF
+                .Trim();
             
             if (string.IsNullOrWhiteSpace(hl7Message))
             {
