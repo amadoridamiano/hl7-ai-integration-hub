@@ -8,7 +8,7 @@ public class OpenAiAssistantHelper(string apiKey, string model)
     private string? _assistantId;
     private string? _vectorStoreId;
     private string? _fileBatchId;
-    private readonly List<string> _fileIds = [];
+    private readonly List<string?> _fileIds = [];
 
     private const string BaseUrl = "https://api.openai.com";
 
@@ -81,8 +81,7 @@ public class OpenAiAssistantHelper(string apiKey, string model)
         do
         {
             await Task.Delay(1000);
-            var checkStatusRequest = new RestRequest($"/v1/vector_stores/{_vectorStoreId}/file_batches/{_fileBatchId}",
-                Method.Get);
+            var checkStatusRequest = new RestRequest($"/v1/vector_stores/{_vectorStoreId}/file_batches/{_fileBatchId}");
             checkStatusRequest.AddHeader("Authorization", $"Bearer {apiKey}");
             checkStatusRequest.AddHeader("OpenAI-Beta", "assistants=v2");
             checkStatusResponse = await client.ExecuteAsync(checkStatusRequest);
@@ -141,19 +140,25 @@ public class OpenAiAssistantHelper(string apiKey, string model)
         Console.WriteLine($"Assistant created: {_assistantId}");
     }
 
-    public async Task<string> AskAsync(string prompt)
+    public async Task<string?> AskAsync(string prompt)
     {
         Console.WriteLine($"Starting prompt: {prompt}");
 
         var client = new RestClient(BaseUrl);
 
+        // Create thread
         var threadReq = new RestRequest("/v1/threads", Method.Post);
         threadReq.AddHeader("Authorization", $"Bearer {apiKey}");
         threadReq.AddHeader("OpenAI-Beta", "assistants=v2");
         var threadRes = await client.ExecuteAsync(threadReq);
+        if (threadRes.Content == null) return null;
         var threadJson = JsonDocument.Parse(threadRes.Content);
         var threadId = threadJson.RootElement.GetProperty("id").GetString();
 
+        if (string.IsNullOrEmpty(threadId))
+            throw new InvalidOperationException("Thread not created.");
+
+        // Add prompt message to thread
         var msgReq = new RestRequest($"/v1/threads/{threadId}/messages", Method.Post);
         msgReq.AddHeader("Authorization", $"Bearer {apiKey}");
         msgReq.AddHeader("OpenAI-Beta", "assistants=v2");
@@ -164,38 +169,48 @@ public class OpenAiAssistantHelper(string apiKey, string model)
         });
         await client.ExecuteAsync(msgReq);
 
+        // Associate assistant to thread
         var runReq = new RestRequest($"/v1/threads/{threadId}/runs", Method.Post);
         runReq.AddHeader("Authorization", $"Bearer {apiKey}");
         runReq.AddHeader("OpenAI-Beta", "assistants=v2");
         runReq.AddJsonBody(new { assistant_id = _assistantId });
         var runRes = await client.ExecuteAsync(runReq);
-        var runJson = JsonDocument.Parse(runRes.Content);
-        var runId = runJson.RootElement.GetProperty("id").GetString();
-
-        string status;
-        do
+        if (runRes.Content != null)
         {
-            await Task.Delay(1000);
-            var checkReq = new RestRequest($"/v1/threads/{threadId}/runs/{runId}", Method.Get);
-            checkReq.AddHeader("Authorization", $"Bearer {apiKey}");
-            checkReq.AddHeader("OpenAI-Beta", "assistants=v2");
-            var checkRes = await client.ExecuteAsync(checkReq);
-            var checkJson = JsonDocument.Parse(checkRes.Content);
-            status = checkJson.RootElement.GetProperty("status").GetString();
-        } while (status != "completed");
+            var runJson = JsonDocument.Parse(runRes.Content);
+            var runId = runJson.RootElement.GetProperty("id").GetString();
 
-        var msgRes = new RestRequest($"/v1/threads/{threadId}/messages", Method.Get);
+            string? status = null;
+            do
+            {
+                await Task.Delay(1000);
+                var checkReq = new RestRequest($"/v1/threads/{threadId}/runs/{runId}");
+                checkReq.AddHeader("Authorization", $"Bearer {apiKey}");
+                checkReq.AddHeader("OpenAI-Beta", "assistants=v2");
+                var checkRes = await client.ExecuteAsync(checkReq);
+                if (checkRes.Content == null) continue;
+                var checkJson = JsonDocument.Parse(checkRes.Content);
+                status = checkJson.RootElement.GetProperty("status").GetString();
+            } while (status != "completed");
+        }
+
+        var msgRes = new RestRequest($"/v1/threads/{threadId}/messages");
         msgRes.AddHeader("Authorization", $"Bearer {apiKey}");
         msgRes.AddHeader("OpenAI-Beta", "assistants=v2");
         var finalRes = await client.ExecuteAsync(msgRes);
+        if (finalRes.Content == null) return null;
         var msgJson = JsonDocument.Parse(finalRes.Content);
 
-        return msgJson.RootElement
+        var response = msgJson.RootElement
             .GetProperty("data")[0]
             .GetProperty("content")[0]
             .GetProperty("text")
             .GetProperty("value")
             .GetString();
+
+        await DeleteThreadAsync(threadId);
+
+        return response;
     }
 
     private async Task UploadFilesFromFolderAsync(string folderPath)
@@ -218,6 +233,7 @@ public class OpenAiAssistantHelper(string apiKey, string model)
             request.AddFile("file", path);
 
             var response = await client.ExecuteAsync(request);
+            if (response.Content == null) continue;
             var json = JsonDocument.Parse(response.Content);
             _fileIds.Add(json.RootElement.GetProperty("id").GetString());
         }
@@ -226,10 +242,11 @@ public class OpenAiAssistantHelper(string apiKey, string model)
     private async Task<List<(string id, string filename)>> ListUploadedFilesAsync()
     {
         var client = new RestClient(BaseUrl);
-        var request = new RestRequest("/v1/files", Method.Get);
+        var request = new RestRequest("/v1/files");
         request.AddHeader("Authorization", $"Bearer {apiKey}");
         request.AddHeader("OpenAI-Beta", "assistants=v2");
         var response = await client.ExecuteAsync(request);
+        if (response.Content == null) return [];
         var json = JsonDocument.Parse(response.Content);
 
         var list = new List<(string id, string filename)>();
@@ -237,7 +254,7 @@ public class OpenAiAssistantHelper(string apiKey, string model)
         {
             var id = file.GetProperty("id").GetString();
             var name = file.GetProperty("filename").GetString();
-            list.Add((id, name));
+            list.Add((id, name)!);
         }
 
         return list;
@@ -250,6 +267,7 @@ public class OpenAiAssistantHelper(string apiKey, string model)
         request.AddHeader("Authorization", $"Bearer {apiKey}");
         request.AddHeader("OpenAI-Beta", "assistants=v2");
         await client.ExecuteAsync(request);
+
         Console.WriteLine($"File deleted: {fileId}");
     }
 
@@ -269,16 +287,18 @@ public class OpenAiAssistantHelper(string apiKey, string model)
         request.AddHeader("Authorization", $"Bearer {apiKey}");
         request.AddHeader("OpenAI-Beta", "assistants=v2");
         await client.ExecuteAsync(request);
+
         Console.WriteLine($"Vector store deleted: {vectorStoreId}");
     }
 
     private async Task<List<(string id, string name)>> ListVectorStoreAsync()
     {
         var client = new RestClient(BaseUrl);
-        var request = new RestRequest("/v1/vector_stores", Method.Get);
+        var request = new RestRequest("/v1/vector_stores");
         request.AddHeader("Authorization", $"Bearer {apiKey}");
         request.AddHeader("OpenAI-Beta", "assistants=v2");
         var response = await client.ExecuteAsync(request);
+        if (response.Content == null) return [];
         var json = JsonDocument.Parse(response.Content);
 
         var list = new List<(string id, string name)>();
@@ -286,7 +306,7 @@ public class OpenAiAssistantHelper(string apiKey, string model)
         {
             var id = vectorStore.GetProperty("id").GetString();
             var name = vectorStore.GetProperty("name").GetString();
-            list.Add((id, name));
+            list.Add((id, name)!);
         }
 
         return list;
@@ -304,10 +324,11 @@ public class OpenAiAssistantHelper(string apiKey, string model)
     private async Task<List<(string id, string name)>> ListAssistantsAsync()
     {
         var client = new RestClient(BaseUrl);
-        var request = new RestRequest("/v1/assistants", Method.Get);
+        var request = new RestRequest("/v1/assistants");
         request.AddHeader("Authorization", $"Bearer {apiKey}");
         request.AddHeader("OpenAI-Beta", "assistants=v2");
         var response = await client.ExecuteAsync(request);
+        if (response.Content == null) return [];
         var json = JsonDocument.Parse(response.Content);
 
         var list = new List<(string id, string name)>();
@@ -315,7 +336,7 @@ public class OpenAiAssistantHelper(string apiKey, string model)
         {
             var id = file.GetProperty("id").GetString();
             var name = file.GetProperty("name").GetString();
-            list.Add((id, name));
+            list.Add((id, name)!);
         }
 
         return list;
@@ -337,6 +358,18 @@ public class OpenAiAssistantHelper(string apiKey, string model)
         request.AddHeader("Authorization", $"Bearer {apiKey}");
         request.AddHeader("OpenAI-Beta", "assistants=v2");
         await client.ExecuteAsync(request);
+
         Console.WriteLine($"Assistant deleted: {assistantId}");
+    }
+
+    private async Task DeleteThreadAsync(string threadId)
+    {
+        var client = new RestClient(BaseUrl);
+        var request = new RestRequest($"/v1/threads/{threadId}", Method.Delete);
+        request.AddHeader("Authorization", $"Bearer {apiKey}");
+        request.AddHeader("OpenAI-Beta", "assistants=v2");
+        await client.ExecuteAsync(request);
+
+        Console.WriteLine($"Thread deleted: {threadId}");
     }
 }
