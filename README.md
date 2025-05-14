@@ -11,6 +11,7 @@ The agent is designed to generate valid, compliant HL7 messages using uploaded h
 ### 1. **HL7MockGenerator**
 - Generates HL7 messages using OpenAI models.
 - Configurable via the `appsettings.json` file to specify the model, version, type of HL7 message.
+- Instructions for the assistants are customizable via the `instructions.txt` file.
 
 ### 2. **OpenAIServices**
 - Manages API calls to OpenAI Assistants v2.
@@ -54,7 +55,7 @@ The main configuration is located in `HL7MockGenerator/appsettings.json`. Exampl
 - **Connection:Ip** and **Connection:Port**: HL7 server IP address and port.
 - **Message:Version** and **Message:Type**: HL7 message version and type.
 - **Mode**: Operational mode (e.g., generation or sending).
-- **SpecsPath**: Folder path containing documentation (PDF or TXT) to upload to OpenAI vector store.
+- **SpecsPath**: Folder path containing documentation (TXT higher performance) to upload to OpenAI vector store.
 
 ## Features
 

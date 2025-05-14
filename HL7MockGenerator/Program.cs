@@ -63,8 +63,8 @@ internal static class Program
 
         do
         {
-            var prompt = $"Generate an HL7 v{hl7Version} message of type {hl7MessageType}" +
-                         $" in pipe-delimited format. Invent real data. {addInstructions}";
+            var prompt = $"Generates an HL7 v{hl7Version} message of type {hl7MessageType}. " +
+                         $"{(string.IsNullOrWhiteSpace(addInstructions) ? "" : addInstructions)}";
 
             var hl7Message = await aiHelper.AskAsync(prompt.Trim());
 
