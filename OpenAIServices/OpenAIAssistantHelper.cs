@@ -105,6 +105,12 @@ public class OpenAiAssistantHelper(string apiKey, string model)
             Console.WriteLine($"Assistant already exists: {_assistantId}");
             return;
         }
+        
+        // Get text instructions from file
+        var instFilePath = Path.Combine(Directory.GetCurrentDirectory(), "instructions.txt");
+        var inst = File.Exists(instFilePath)
+            ? await File.ReadAllTextAsync(instFilePath)
+            : "You are an AI assistant that generates HL7 messages based on specifications.";
 
         var request = new RestRequest("/v1/assistants", Method.Post);
         request.AddHeader("Authorization", $"Bearer {apiKey}");
@@ -113,9 +119,7 @@ public class OpenAiAssistantHelper(string apiKey, string model)
         {
             model,
             name = "HL7 Mock Generator Assistant",
-            instructions =
-                "You are a healthcare integration expert. Generate a compliant HL7 message using the uploaded documentation and examples." +
-                " Return only the HL7 message with no extra text or explanation. Ensure each segment is on a new line.",
+            instructions = inst,
             temperature = 0.2,
             tools = new[] { new { type = "file_search" } },
             tool_resources = new

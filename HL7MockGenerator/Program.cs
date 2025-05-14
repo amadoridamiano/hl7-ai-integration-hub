@@ -42,6 +42,10 @@ internal static class Program
         var openaiKey = Environment.GetEnvironmentVariable("OPENAI_API_KEY") ?? Prompt("Enter OpenAI API Key: ");
         var openaiModel = _configuration["OpenAI:Model"] ?? Prompt("Model (e.g., gpt-3.5-turbo): ");
 
+        // Additional instructions for the AI
+        Console.Write("Additional instructions: ");
+        var addInstructions = Console.ReadLine();
+
         // Check if the OpenAI API key is valid
         var apiCaller = new OpenAiUtilities(openaiKey, openaiModel);
         var checkApiKey = await apiCaller.CheckApiKeyAsync();
@@ -59,10 +63,10 @@ internal static class Program
 
         do
         {
-            var prompt =
-                $"Generate an HL7 v{hl7Version} message of type {hl7MessageType} in pipe-delimited format. Invent real data.";
+            var prompt = $"Generates an HL7 v{hl7Version} message of type {hl7MessageType}. " +
+                         $"{(string.IsNullOrWhiteSpace(addInstructions) ? "" : addInstructions)}";
 
-            var hl7Message = await aiHelper.AskAsync(prompt);
+            var hl7Message = await aiHelper.AskAsync(prompt.Trim());
 
             if (string.IsNullOrWhiteSpace(hl7Message))
             {
